@@ -4,7 +4,6 @@ use agave_schedulers::batch;
 use agave_schedulers::events::{EventContext, EventEmitter};
 use agave_schedulers::fifo::FifoScheduler;
 use agave_schedulers::greedy::GreedyScheduler;
-use agave_scheduling_utils::handshake::logon_flags;
 use futures::StreamExt;
 use futures::stream::FuturesUnordered;
 use solana_keypair::{EncodableKey, Keypair};
@@ -94,7 +93,6 @@ impl ControlThread {
                     shutdown.clone(),
                     args.bindings_ipc,
                     scheduler,
-                    logon_flags::REROUTE_VOTES,
                 ));
                 threads.push(jito_thread);
             }
@@ -102,14 +100,12 @@ impl ControlThread {
                 shutdown.clone(),
                 args.bindings_ipc,
                 FifoScheduler::new(),
-                0,
             )),
             SchedulerConfig::Greedy => {
                 threads.push(crate::scheduler_thread::spawn::<GreedyScheduler>(
                     shutdown.clone(),
                     args.bindings_ipc,
                     GreedyScheduler::new(Some(events)),
-                    0,
                 ));
             }
         }
