@@ -53,15 +53,15 @@ const MAX_CHECK_BATCHES: usize = 4;
 const BLOCK_FILL_CUTOFF: u8 = 20;
 const PROGRESS_TIMEOUT: Duration = Duration::from_secs(5);
 
-#[derive(Debug, Deserialize)]
+#[derive(Debug, Clone, Copy, Deserialize)]
 pub struct GreedyArgs {
+    pub workers: usize,
     pub unchecked_capacity: usize,
     pub checked_capacity: usize,
 }
 
 pub struct GreedyScheduler {
-    unchecked_capacity: usize,
-    checked_capacity: usize,
+    args: GreedyArgs,
 
     unchecked_tx: MinMaxHeap<PriorityId>,
     checked_tx: BTreeSet<PriorityId>,
@@ -80,19 +80,22 @@ pub struct GreedyScheduler {
 }
 
 impl GreedyScheduler {
+    /// Create a new greedy scheduler.
+    ///
+    /// # Panics
+    ///
+    /// - If [`GreedyArgs::workers`] is < 2.
     #[must_use]
-    pub fn new(
-        events: Option<EventEmitter>,
-        GreedyArgs { unchecked_capacity, checked_capacity }: GreedyArgs,
-    ) -> Self {
-        Self {
-            unchecked_capacity,
-            checked_capacity,
+    pub fn new(events: Option<EventEmitter>, args: GreedyArgs) -> Self {
+        assert!(args.workers >= 2, "need at least 2 workers");
 
-            unchecked_tx: MinMaxHeap::with_capacity(unchecked_capacity),
+        Self {
+            args,
+
+            unchecked_tx: MinMaxHeap::with_capacity(args.unchecked_capacity),
             checked_tx: BTreeSet::new(),
-            executing_tx: HashSet::with_capacity(checked_capacity),
-            deferred_tx: IndexSet::with_capacity(checked_capacity),
+            executing_tx: HashSet::with_capacity(args.checked_capacity),
+            deferred_tx: IndexSet::with_capacity(args.checked_capacity),
             next_recheck: None,
             in_flight_cus: 0,
             in_flight_locks: HashMap::new(),
@@ -225,7 +228,7 @@ impl GreedyScheduler {
     where
         B: Bridge<Meta = PriorityId>,
     {
-        for worker in 0..5 {
+        for worker in 0..self.args.workers {
             bridge.worker_drain(
                 worker,
                 |bridge, WorkerResponse { meta, response, .. }| {
@@ -263,7 +266,7 @@ impl GreedyScheduler {
     {
         let additional = std::cmp::min(bridge.tpu_len(), max_count);
         let shortfall =
-            (self.unchecked_tx.len() + additional).saturating_sub(self.unchecked_capacity);
+            (self.unchecked_tx.len() + additional).saturating_sub(self.args.unchecked_capacity);
 
         // NB: Technically we are evicting more than we need to because not all of
         // `additional` will parse correctly & thus have a priority.
@@ -480,7 +483,7 @@ impl GreedyScheduler {
         }
 
         // First check. Evict lowest priority if at capacity.
-        if self.pending_len() >= self.checked_capacity {
+        if self.pending_len() >= self.args.checked_capacity {
             let id = self.checked_tx.pop_first().unwrap();
             self.emit_tx_event(
                 bridge,
@@ -550,7 +553,7 @@ impl GreedyScheduler {
         }
 
         // Evict from checked_tx if over capacity.
-        if self.pending_len() > self.checked_capacity
+        if self.pending_len() > self.args.checked_capacity
             && let Some(evicted) = self.checked_tx.pop_first()
         {
             self.emit_tx_event(
@@ -888,7 +891,10 @@ mod tests {
     };
 
     fn test_scheduler() -> GreedyScheduler {
-        GreedyScheduler::new(None, GreedyArgs { unchecked_capacity: 64, checked_capacity: 64 })
+        GreedyScheduler::new(
+            None,
+            GreedyArgs { workers: 5, unchecked_capacity: 64, checked_capacity: 64 },
+        )
     }
 
     fn noop_with_budget(payer: &Keypair, cu_limit: u32, cu_price: u64) -> VersionedTransaction {

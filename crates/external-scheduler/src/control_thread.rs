@@ -107,7 +107,11 @@ impl ControlThread {
                     args.bindings_ipc,
                     GreedyScheduler::new(
                         Some(events),
-                        GreedyArgs { unchecked_capacity: 64 * 1024, checked_capacity: 64 * 1024 },
+                        GreedyArgs {
+                            workers: 5,
+                            unchecked_capacity: 64 * 1024,
+                            checked_capacity: 64 * 1024,
+                        },
                     ),
                 ));
             }
