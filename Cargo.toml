@@ -54,7 +54,10 @@ trivially_copy_pass_by_ref = "warn"
 [workspace.dependencies]
 agave-bridge.path = "./crates/bridge"
 agave-feature-set = { git = "https://github.com/OliverNChalk/agave" }
+agave-scheduler-batch.path = "./crates/scheduler-batch"
 agave-scheduler-bindings = { git = "https://github.com/OliverNChalk/agave" }
+agave-scheduler-fifo.path = "./crates/scheduler-fifo"
+agave-scheduler-greedy.path = "./crates/scheduler-greedy"
 agave-schedulers.path = "./crates/schedulers"
 agave-scheduling-utils = { git = "https://github.com/OliverNChalk/agave" }
 agave-transaction-view = { git = "https://github.com/OliverNChalk/agave" }
