@@ -10,7 +10,7 @@ workspace = true
 
 [dependencies]
 agave-bridge.workspace = true
-agave-scheduler-bindings = { workspace = true, features = ["dev-context-only-utils"] }
+agave-scheduler-bindings.workspace = true
 agave-schedulers.workspace = true
 agave-scheduling-utils = { workspace = true, features = ["agave-unstable-api"] }
 agave-transaction-view.workspace = true
