@@ -12,30 +12,75 @@ pub trait Bridge {
     type Worker: Worker;
     type Meta;
 
+    /// Returns the current state of the runtime.
     fn runtime(&self) -> &RuntimeState;
 
+    /// Returns the most recently received [`ProgressMessage`].
     fn progress(&self) -> &ProgressMessage;
 
+    /// Returns the number of workers in agave paired with this scheduler.
     fn worker_count(&self) -> usize;
 
+    /// Returns a mutable reference to the worker with the given ID.
+    ///
+    /// # Panics
+    ///
+    /// If the provided worker `id` does not exist.
     fn worker(&mut self, id: usize) -> &mut Self::Worker;
 
+    /// Returns a reference to the transaction state for the given transaction
+    /// key.
+    ///
+    /// # Panics
+    ///
+    /// If the provided [`TransactionKey`] does not exist.
     fn tx(&self, key: TransactionKey) -> &TransactionState;
 
+    /// Inserts a transaction into the bridge and returns its
+    /// [`TransactionKey`]. This key is used to reference the transaction in:
+    ///
+    /// - [`Self::tx`]
+    /// - [`Self::tx_drop`]
+    /// - [`Self::schedule`]
     fn tx_insert(&mut self, tx: &[u8]) -> Result<TransactionKey, TransactionViewError>;
 
+    /// Drops the transaction with the given [`TransactionKey`].
+    ///
+    /// # Panics
+    ///
+    /// If the provided [`TransactionKey`] does not exist.
     fn tx_drop(&mut self, key: TransactionKey);
 
+    /// Drains all pending progress messages received from agave.
+    /// This updates the internal state of the bridge to reflect the progress
+    /// messages so that [`Self::progress`] returns the most recently
+    /// received progress message.
+    ///
+    /// Returns a copy of the most recently received progress message if any.
     fn drain_progress(&mut self) -> Option<ProgressMessage>;
 
+    /// Returns the current length of the TPU queue.
     fn tpu_len(&mut self) -> usize;
 
+    /// Drains up to `max_count` transactions from the TPU queue, passing each
+    /// transaction, by key, to the provided callback. The callback returns a
+    /// [`TxDecision`] indicating whether the transaction is kept or dropped.
+    ///
+    /// The callback must not call [`Self::tx_drop`] on the passed
+    /// [`TransactionKey`].
     fn tpu_drain(
         &mut self,
         cb: impl FnMut(&mut Self, TransactionKey) -> TxDecision,
         max_count: usize,
     );
 
+    /// Drains up to `max_count` responses (transaction batches) from the
+    /// specified worker. For each response, the provided callback is called
+    /// for each of the transactions, returning a [`TxDecision`] indicating
+    /// whether the transaction is kept or dropped.
+    ///
+    /// The callback must not call [`Self::tx_drop`] on the passed
+    /// [`TransactionKey`].
     fn worker_drain(
         &mut self,
         worker: usize,
@@ -43,6 +88,7 @@ pub trait Bridge {
         max_count: usize,
     );
 
+    /// Sends a batch of transactions to the specified worker for processing.
     fn schedule(&mut self, batch: ScheduleBatch<&[KeyedTransactionMeta<Self::Meta>]>);
 }
 
