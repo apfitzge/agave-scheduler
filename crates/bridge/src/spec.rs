@@ -22,18 +22,33 @@ pub trait Bridge {
     fn worker_count(&self) -> usize;
 
     /// Returns a mutable reference to the worker with the given ID.
+    ///
+    /// # Panics
+    ///
+    /// If the provided worker `id` does not exist.
     fn worker(&mut self, id: usize) -> &mut Self::Worker;
 
     /// Returns a reference to the transaction state for the given transaction
     /// key.
+    ///
+    /// # Panics
+    ///
+    /// If the provided [`TransactionKey`] does not exist.
     fn tx(&self, key: TransactionKey) -> &TransactionState;
 
     /// Inserts a transaction into the bridge and returns its
-    /// [`TransactionKey`]. This key is used to reference the transaction in
-    /// [`Self::tx_drop`] and [`Self::pop_worker`].
-    #[must_use]
+    /// [`TransactionKey`]. This key is used to reference the transaction in:
+    ///
+    /// - [`Self::tx`]
+    /// - [`Self::tx_drop`]
+    /// - [`Self::schedule`]
     fn tx_insert(&mut self, tx: &[u8]) -> Result<TransactionKey, TransactionViewError>;
 
+    /// Drops the transaction with the given [`TransactionKey`].
+    ///
+    /// # Panics
+    ///
+    /// If the provided [`TransactionKey`] does not exist.
     fn tx_drop(&mut self, key: TransactionKey);
 
     /// Drains all pending progress messages received from agave.
