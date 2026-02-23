@@ -1,3 +1,4 @@
+use std::sync::Arc;
 use std::sync::atomic::{AtomicU64, Ordering};
 
 use solana_clock::Slot;
@@ -7,18 +8,18 @@ use crate::events::{Event, StampedEvent};
 
 #[derive(Debug, Clone)]
 pub struct EventEmitter {
-    ctx: &'static EventContext,
+    ctx: Arc<EventContext>,
     tx: mpsc::Sender<StampedEvent>,
 }
 
 impl EventEmitter {
-    pub const fn new(ctx: &'static EventContext, tx: mpsc::Sender<StampedEvent>) -> Self {
-        EventEmitter { ctx, tx }
+    pub fn new(ctx: EventContext, tx: mpsc::Sender<StampedEvent>) -> Self {
+        EventEmitter { ctx: Arc::new(ctx), tx }
     }
 
     #[must_use]
-    pub const fn ctx(&self) -> &'static EventContext {
-        self.ctx
+    pub fn ctx(&self) -> &EventContext {
+        &self.ctx
     }
 
     pub fn emit(&self, event: Event) {
@@ -38,8 +39,8 @@ pub struct EventContext {
 
 impl EventContext {
     #[must_use]
-    pub fn leak() -> &'static Self {
-        Box::leak(Box::new(Self { slot: AtomicU64::new(0) }))
+    pub const fn new() -> Self {
+        Self { slot: AtomicU64::new(0) }
     }
 
     pub fn set(&self, slot: Slot) {

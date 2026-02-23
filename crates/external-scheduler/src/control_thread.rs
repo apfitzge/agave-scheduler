@@ -58,7 +58,7 @@ impl ControlThread {
         );
 
         // Spawn events publisher.
-        let event_ctx = EventContext::leak();
+        let event_ctx = EventContext::new();
         let (event_tx, event_rx) = mpsc::channel(1024);
         let events = EventEmitter::new(event_ctx, event_tx);
         threads.push(EventsThread::spawn(event_rx, nats_client, &config.host_name));
