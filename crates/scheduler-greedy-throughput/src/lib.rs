@@ -56,14 +56,14 @@ const BLOCK_FILL_CUTOFF: u8 = 20;
 const PROGRESS_TIMEOUT: Duration = Duration::from_secs(5);
 
 #[derive(Debug, Clone, Copy, Deserialize)]
-pub struct GreedyArgs {
+pub struct GreedyThroughputArgs {
     pub workers: usize,
     pub unchecked_capacity: usize,
     pub checked_capacity: usize,
 }
 
-pub struct GreedyScheduler {
-    args: GreedyArgs,
+pub struct GreedyThroughputScheduler {
+    args: GreedyThroughputArgs,
 
     unchecked_tx: MinMaxHeap<PriorityId>,
     checked_tx: BTreeSet<PriorityId>,
@@ -81,14 +81,14 @@ pub struct GreedyScheduler {
     metrics: BatchMetrics,
 }
 
-impl GreedyScheduler {
+impl GreedyThroughputScheduler {
     /// Create a new greedy scheduler.
     ///
     /// # Panics
     ///
-    /// - If [`GreedyArgs::workers`] is < 2.
+    /// - If [`GreedyThroughputArgs::workers`] is < 2.
     #[must_use]
-    pub fn new(events: Option<EventEmitter>, args: GreedyArgs) -> Self {
+    pub fn new(events: Option<EventEmitter>, args: GreedyThroughputArgs) -> Self {
         assert!(args.workers >= 2, "need at least 2 workers");
 
         Self {
@@ -593,6 +593,9 @@ impl GreedyScheduler {
 
     /// Trys to schedule a transaction.
     ///
+    /// Walks from highest to lowest priority, skipping conflicts and
+    /// over-budget TXs to maximize worker utilization.
+    ///
     /// # Return
     ///
     /// Places scheduled transactions in `self.schedule_batch`.
@@ -600,25 +603,30 @@ impl GreedyScheduler {
     where
         B: Bridge<Meta = PriorityId>,
     {
-        let tx = self.checked_tx.last().unwrap();
+        // Walk from highest to lowest priority, skipping conflicts and over-budget TXs.
+        let mut found = None;
+        for tx in self.checked_tx.iter().rev() {
+            if tx.cost > *budget {
+                continue;
+            }
+            if !Self::can_lock(&self.in_flight_locks, bridge, tx.key) {
+                continue;
+            }
+            found = Some(*tx);
 
-        // Check if this fits in the budget.
-        if tx.cost > *budget {
-            return;
+            break;
         }
+        let Some(tx) = found else { return };
 
-        // Check if this transaction's read/write locks conflict with any
-        // pre-existing read/write locks.
-        if !Self::can_lock(&self.in_flight_locks, bridge, tx.key) {
-            return;
-        }
+        // Remove from checked.
+        assert!(self.checked_tx.remove(&tx));
 
         // Insert all the locks.
         Self::lock(&mut self.in_flight_locks, bridge, tx.key);
 
         // Build the 1TX batch.
         self.schedule_batch
-            .push(KeyedTransactionMeta { key: tx.key, meta: *tx });
+            .push(KeyedTransactionMeta { key: tx.key, meta: tx });
 
         // Schedule the batch.
         bridge.schedule(ScheduleBatch {
@@ -631,7 +639,6 @@ impl GreedyScheduler {
         // Update state.
         *budget -= tx.cost;
         self.in_flight_cus += tx.cost;
-        self.checked_tx.pop_last().unwrap();
     }
 
     /// Checks a TX for lock conflicts without inserting locks.
@@ -832,36 +839,40 @@ impl BatchMetrics {
 
 #[derive(Debug, Default)]
 struct AccountLockers {
-    writers: HashSet<TransactionKey>,
+    writer: Option<TransactionKey>,
     readers: HashSet<TransactionKey>,
 }
 
 impl AccountLockers {
     fn is_empty(&self) -> bool {
-        self.writers.is_empty() && self.readers.is_empty()
+        self.writer.is_none() && self.readers.is_empty()
     }
 
     fn can_lock(&self, writable: bool) -> bool {
         match writable {
             true => self.is_empty(),
-            false => self.writers.is_empty(),
+            false => self.writer.is_none(),
         }
     }
 
     fn insert(&mut self, tx_key: TransactionKey, writable: bool) {
-        let set = match writable {
-            true => &mut self.writers,
-            false => &mut self.readers,
-        };
-        assert!(set.insert(tx_key));
+        match writable {
+            true => {
+                assert!(self.writer.is_none());
+                self.writer = Some(tx_key);
+            }
+            false => assert!(self.readers.insert(tx_key)),
+        }
     }
 
     fn remove(&mut self, tx_key: TransactionKey, writable: bool) {
-        let set = match writable {
-            true => &mut self.writers,
-            false => &mut self.readers,
-        };
-        assert!(set.remove(&tx_key));
+        match writable {
+            true => {
+                assert_eq!(self.writer, Some(tx_key));
+                self.writer = None;
+            }
+            false => assert!(self.readers.remove(&tx_key)),
+        }
     }
 }
 
@@ -892,10 +903,10 @@ mod tests {
         current_slot_progress: 25,
     };
 
-    fn test_scheduler() -> GreedyScheduler {
-        GreedyScheduler::new(
+    fn test_scheduler() -> GreedyThroughputScheduler {
+        GreedyThroughputScheduler::new(
             None,
-            GreedyArgs { workers: 5, unchecked_capacity: 64, checked_capacity: 64 },
+            GreedyThroughputArgs { workers: 5, unchecked_capacity: 64, checked_capacity: 64 },
         )
     }
 
@@ -913,7 +924,7 @@ mod tests {
     }
 
     type SetupExecuting = (
-        GreedyScheduler,
+        GreedyThroughputScheduler,
         TestBridge<PriorityId>,
         ScheduleBatch<Vec<KeyedTransactionMeta<PriorityId>>>,
     );
@@ -1304,7 +1315,7 @@ mod tests {
         let shared_account = Pubkey::new_unique();
         let program_id = Pubkey::new_unique();
 
-        // Build two TXs that both write to the shared account.
+        // TX A: highest priority, writes to shared_account.
         let payer_a = Keypair::new();
         let tx_a: VersionedTransaction = Transaction::new_signed_with_payer(
             &[
@@ -1322,6 +1333,7 @@ mod tests {
         )
         .into();
 
+        // TX B: medium priority, also writes to shared_account (conflicts with A).
         let payer_b = Keypair::new();
         let tx_b: VersionedTransaction = Transaction::new_signed_with_payer(
             &[
@@ -1339,6 +1351,60 @@ mod tests {
         )
         .into();
 
+        // TX C: lowest priority, no conflict (different accounts).
+        let payer_c = Keypair::new();
+        let tx_c = noop_with_budget(&payer_c, 25_000, 50);
+
+        bridge.queue_tpu(&tx_a);
+        bridge.queue_tpu(&tx_b);
+        bridge.queue_tpu(&tx_c);
+
+        // Poll - ingest & schedule checks.
+        bridge.queue_progress(MOCK_PROGRESS);
+        scheduler.poll(&mut bridge);
+
+        // Poll - Complete checks successfully.
+        bridge.queue_all_checks_ok();
+        bridge.queue_progress(MOCK_PROGRESS);
+        scheduler.poll(&mut bridge);
+        assert_eq!(scheduler.checked_tx.len(), 3);
+
+        // Poll - Transition to leader.
+        bridge.queue_progress(ProgressMessage { leader_state: LEADER_READY, ..MOCK_PROGRESS });
+        scheduler.poll(&mut bridge);
+
+        // Throughput scheduler skips conflicts: A and C should both be scheduled.
+        let exec_1 = bridge.pop_schedule().unwrap();
+        assert_eq!(exec_1.flags, pack_message_flags::EXECUTE);
+        assert_eq!(exec_1.transactions.len(), 1);
+
+        let exec_2 = bridge.pop_schedule().unwrap();
+        assert_eq!(exec_2.flags, pack_message_flags::EXECUTE);
+        assert_eq!(exec_2.transactions.len(), 1);
+
+        // No third execute batch (B conflicts with A).
+        assert_eq!(bridge.pop_schedule(), None);
+
+        // A and C are executing, B stays in checked.
+        assert_eq!(scheduler.executing_tx.len(), 2);
+        assert!(scheduler.executing_tx.contains(&exec_1.transactions[0].key));
+        assert!(scheduler.executing_tx.contains(&exec_2.transactions[0].key));
+        assert_eq!(scheduler.checked_tx.len(), 1);
+    }
+
+    #[test]
+    fn throughput_skips_over_budget_tx() {
+        let mut scheduler = test_scheduler();
+        let mut bridge = TestBridge::new(5, 4);
+
+        // TX A: high priority but expensive (large CU limit).
+        let payer_a = Keypair::new();
+        let tx_a = noop_with_budget(&payer_a, 10_000_000, 200);
+
+        // TX B: lower priority but cheap (small CU limit).
+        let payer_b = Keypair::new();
+        let tx_b = noop_with_budget(&payer_b, 25_000, 100);
+
         bridge.queue_tpu(&tx_a);
         bridge.queue_tpu(&tx_b);
 
@@ -1352,21 +1418,39 @@ mod tests {
         scheduler.poll(&mut bridge);
         assert_eq!(scheduler.checked_tx.len(), 2);
 
-        // Poll - Transition to leader.
-        bridge.queue_progress(ProgressMessage { leader_state: LEADER_READY, ..MOCK_PROGRESS });
+        // Identify which is the expensive vs cheap TX by cost.
+        let (expensive, cheap) = {
+            let mut iter = scheduler.checked_tx.iter();
+            let first = *iter.next().unwrap();
+            let second = *iter.next().unwrap();
+            if first.cost > second.cost { (first, second) } else { (second, first) }
+        };
+        assert!(expensive.cost > cheap.cost, "test setup: costs must differ");
+
+        // Set budget between cheap and expensive so only the cheap TX fits.
+        let budget_limit = MAX_BLOCK_UNITS_SIMD_0256 * 45 / 100;
+        let desired_budget = u64::midpoint(cheap.cost, expensive.cost);
+        assert!(desired_budget >= cheap.cost, "test setup: cheap must fit");
+        assert!(desired_budget < expensive.cost, "test setup: expensive must not fit");
+        let cost_used = budget_limit - desired_budget;
+        let remaining = MAX_BLOCK_UNITS_SIMD_0256 - cost_used;
+
+        bridge.queue_progress(ProgressMessage {
+            leader_state: LEADER_READY,
+            remaining_cost_units: remaining,
+            ..MOCK_PROGRESS
+        });
         scheduler.poll(&mut bridge);
 
-        // Only one user TX should be scheduled (the other conflicts on shared_account).
+        // The cheap TX should be scheduled (skipping the expensive one).
         let exec = bridge.pop_schedule().unwrap();
         assert_eq!(exec.flags, pack_message_flags::EXECUTE);
         assert_eq!(exec.transactions.len(), 1);
+        assert_eq!(exec.transactions[0].key, cheap.key);
 
-        // No second execute batch (lock conflict blocks the second TX).
-        assert_eq!(bridge.pop_schedule(), None);
-
-        // One user TX executing, one still in checked.
-        assert!(scheduler.executing_tx.contains(&exec.transactions[0].key));
-        assert_eq!(scheduler.checked_tx.len(), 1);
+        // Expensive TX stays in checked.
+        assert!(scheduler.checked_tx.contains(&expensive));
+        assert!(scheduler.executing_tx.contains(&cheap.key));
     }
 
     #[test]
@@ -1395,12 +1479,7 @@ mod tests {
 
         // Assert - Only check batches (rechecks), no execute batches.
         while let Some(batch) = bridge.pop_schedule() {
-            assert_eq!(
-                batch.flags & pack_message_flags::EXECUTE,
-                0,
-                "Expected no EXECUTE batches when not leader, got flags: {}",
-                batch.flags,
-            );
+            assert_eq!(batch.flags & pack_message_flags::EXECUTE, 0);
         }
 
         // Assert - TX stays in checked, nothing executing.
