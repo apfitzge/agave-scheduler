@@ -17,7 +17,7 @@ use agave_schedulers::events::{
     CheckFailure, Event, EventEmitter, EvictReason, SlotStatsEvent, TransactionAction,
     TransactionEvent, TransactionSource,
 };
-use agave_schedulers::shared::PriorityId;
+pub use agave_schedulers::shared::PriorityId;
 use agave_scheduling_utils::bridge::{
     KeyedTransactionMeta, RuntimeState, ScheduleBatch, SchedulerBindingsBridge, TransactionKey,
     TxDecision, WorkerAction, WorkerResponse,
