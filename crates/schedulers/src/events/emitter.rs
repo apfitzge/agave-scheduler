@@ -3,6 +3,7 @@ use std::sync::atomic::{AtomicU64, Ordering};
 
 use solana_clock::Slot;
 use tokio::sync::mpsc;
+use toolbox::error_once;
 
 use crate::events::{Event, StampedEvent};
 
@@ -26,9 +27,13 @@ impl EventEmitter {
         let timestamp = chrono::Utc::now();
         let slot = self.ctx.slot.load(Ordering::Relaxed);
 
-        self.tx
+        if self
+            .tx
             .try_send(StampedEvent { timestamp, slot, event })
-            .unwrap();
+            .is_err()
+        {
+            error_once!("Dropping events");
+        }
     }
 }
 

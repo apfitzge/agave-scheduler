@@ -241,6 +241,8 @@ dependencies = [
  "solana-transaction 4.0.0",
  "strum",
  "tokio",
+ "toolbox",
+ "tracing",
 ]
 
 [[package]]
