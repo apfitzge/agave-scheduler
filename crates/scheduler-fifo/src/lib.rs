@@ -5,7 +5,7 @@ use agave_scheduler_bindings::worker_message_types::{
     parsing_and_sanitization_flags, status_check_flags,
 };
 use agave_scheduler_bindings::{LEADER_READY, MAX_TRANSACTIONS_PER_MESSAGE, pack_message_flags};
-use agave_scheduling_utils::bridge::{
+use agave_scheduler_bridge::{
     KeyedTransactionMeta, ScheduleBatch, SchedulerBindingsBridge, TransactionKey, TxDecision,
     WorkerAction, WorkerResponse,
 };

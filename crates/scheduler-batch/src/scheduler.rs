@@ -14,15 +14,15 @@ use agave_scheduler_bindings::worker_message_types::{
 use agave_scheduler_bindings::{
     LEADER_READY, MAX_TRANSACTIONS_PER_MESSAGE, SharableTransactionRegion, pack_message_flags,
 };
+use agave_scheduler_bridge::{
+    KeyedTransactionMeta, RuntimeState, ScheduleBatch, SchedulerBindingsBridge, TransactionKey,
+    TxDecision, WorkerAction, WorkerResponse,
+};
 use agave_schedulers::events::{
     CheckFailure, Event, EventEmitter, EvictReason, SlotStatsEvent, TransactionAction,
     TransactionEvent, TransactionSource,
 };
 use agave_schedulers::shared::PriorityId;
-use agave_scheduling_utils::bridge::{
-    KeyedTransactionMeta, RuntimeState, ScheduleBatch, SchedulerBindingsBridge, TransactionKey,
-    TxDecision, WorkerAction, WorkerResponse,
-};
 use agave_scheduling_utils::pubkeys_ptr::PubkeysPtr;
 use agave_scheduling_utils::transaction_ptr::TransactionPtr;
 use agave_transaction_view::transaction_view::SanitizedTransactionView;
@@ -1368,7 +1368,7 @@ mod tests {
         CheckResponse, parsing_and_sanitization_flags, resolve_flags, status_check_flags,
     };
     use agave_scheduler_bindings::{NOT_LEADER, ProgressMessage, pack_message_flags};
-    use agave_scheduling_utils::bridge::TestBridge;
+    use agave_scheduler_bridge::TestBridge;
     use solana_compute_budget_interface::ComputeBudgetInstruction;
     use solana_hash::Hash;
     use solana_keypair::{Keypair, Signer};

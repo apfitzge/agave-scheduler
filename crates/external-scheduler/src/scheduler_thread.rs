@@ -3,11 +3,11 @@ use std::thread::JoinHandle;
 use std::time::Duration;
 
 use agave_scheduler_batch::BatchScheduler;
+use agave_scheduler_bridge::SchedulerBindingsBridge;
 use agave_scheduler_fifo::FifoScheduler;
 use agave_scheduler_greedy_revenue::GreedyRevenueScheduler;
 use agave_scheduler_greedy_throughput::GreedyThroughputScheduler;
 use agave_schedulers::shared::PriorityId;
-use agave_scheduling_utils::bridge::SchedulerBindingsBridge;
 use agave_scheduling_utils::handshake::{ClientLogon, client as handshake_client};
 use toolbox::shutdown::Shutdown;
 

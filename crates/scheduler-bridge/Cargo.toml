@@ -1,0 +1,26 @@
+[package]
+name = "agave-scheduler-bridge"
+version.workspace = true
+edition.workspace = true
+authors.workspace = true
+license.workspace = true
+
+[features]
+dev-context-only-utils = ["dep:bincode", "dep:solana-transaction"]
+
+[lints]
+workspace = true
+
+[dependencies]
+agave-feature-set = { workspace = true, features = ["agave-unstable-api"] }
+agave-scheduler-bindings.workspace = true
+agave-scheduling-utils = { workspace = true, features = ["agave-unstable-api"] }
+agave-transaction-view.workspace = true
+bincode = { workspace = true, optional = true }
+rts-alloc.workspace = true
+shaq.workspace = true
+slotmap.workspace = true
+solana-fee = { workspace = true, features = ["agave-unstable-api"] }
+solana-pubkey.workspace = true
+solana-transaction = { workspace = true, optional = true, features = ["serde"] }
+thiserror.workspace = true

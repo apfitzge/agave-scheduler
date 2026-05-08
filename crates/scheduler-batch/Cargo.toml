@@ -10,6 +10,7 @@ workspace = true
 
 [dependencies]
 agave-scheduler-bindings.workspace = true
+agave-scheduler-bridge.workspace = true
 agave-schedulers.workspace = true
 agave-scheduling-utils = { workspace = true, features = ["agave-unstable-api"] }
 agave-transaction-view.workspace = true
@@ -39,7 +40,7 @@ solana-rpc-client-types.workspace = true
 solana-runtime-transaction = { workspace = true, features = ["agave-unstable-api"] }
 solana-sdk-ids.workspace = true
 solana-svm-transaction.workspace = true
-solana-transaction = { workspace = true, features = ["wincode"] }
+solana-transaction = { workspace = true, features = ["bincode"] }
 static_assertions.workspace = true
 tokio.workspace = true
 tonic = { workspace = true, features = ["tls", "tls-roots"] }
@@ -47,4 +48,5 @@ toolbox = { workspace = true, features = ["interval_stream", "shutdown"] }
 tracing.workspace = true
 
 [dev-dependencies]
+agave-scheduler-bridge = { workspace = true, features = ["dev-context-only-utils"] }
 solana-compute-budget-interface.workspace = true

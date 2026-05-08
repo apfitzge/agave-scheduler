@@ -10,6 +10,7 @@ workspace = true
 
 [dependencies]
 agave-scheduler-batch.workspace = true
+agave-scheduler-bridge.workspace = true
 agave-scheduler-fifo.workspace = true
 agave-scheduler-greedy-revenue.workspace = true
 agave-scheduler-greedy-throughput.workspace = true

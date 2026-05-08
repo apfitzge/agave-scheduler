@@ -1,4 +1,4 @@
-use agave_scheduling_utils::bridge::TransactionKey;
+use agave_scheduler_bridge::TransactionKey;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 #[repr(C)]
